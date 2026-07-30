@@ -13,7 +13,7 @@ const background = await readFile(join(extensionDir, "background.js"), "utf8");
 const popup = await readFile(join(extensionDir, "popup.js"), "utf8");
 
 assert.equal(manifest.manifest_version, 3);
-assert.equal(manifest.version, "0.3.0");
+assert.equal(manifest.version, "0.3.1");
 assert.deepEqual(
   new Set(manifest.permissions),
   new Set(["storage", "activeTab"]),
@@ -55,11 +55,17 @@ assert.match(content, /childList:\s*true/);
 assert.match(content, /data-testid\^="conversation-turn-"/);
 assert.match(content, /data-message-author-role/);
 assert.doesNotMatch(content, /\.innerText\b/, "内容脚本不应读取会话文字");
-assert.doesNotMatch(
-  content,
-  /\.textContent\b(?!\s*=)/,
-  "内容脚本不应读取会话文字"
+assert.equal(
+  (content.match(/\.textContent\b(?!\s*=)/g) ?? []).length,
+  1,
+  "内容脚本只能读取一个候选错误提示的文字，不得读取聊天内容"
 );
+assert.match(content, /function classifyPageAlert\(element\)/);
+assert.match(content, /ERROR_TEXT_PATTERNS/);
+assert.match(content, /checkVisibility/);
+assert.match(content, /getClientRects/);
+assert.match(content, /healthIssue/);
+assert.match(content, /slice\(0,\s*1_000\)/);
 assert.doesNotMatch(
   content,
   /\b(getBoundingClientRect|getComputedStyle)\b/,

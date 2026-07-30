@@ -101,6 +101,19 @@
       .thought-block[data-glco-chunk-frozen="true"] {
         outline: 2px dashed #17a992;
       }
+      [id^="fixture-"][role="alert"],
+      [id^="fixture-"][data-state="error"] {
+        position: fixed;
+        z-index: 20;
+        top: 82px;
+        right: 18px;
+        max-width: 280px;
+        padding: 10px 12px;
+        border: 1px solid #d36d72;
+        border-radius: 10px;
+        color: #7f1d25;
+        background: #fff0f1;
+      }
     </style>
     <link rel="stylesheet" href="../extension/early.css">
   </head>
@@ -111,6 +124,11 @@
       <button id="append-thinking" type="button">追加 20 个思考段</button>
       <button id="finish-thinking" type="button">完成思考</button>
       <button id="simulate-error" type="button">模拟连接错误</button>
+      <button id="simulate-explicit-error" type="button">模拟显式页面错误</button>
+      <button id="simulate-notice" type="button">模拟普通通知</button>
+      <button id="simulate-hidden-error" type="button">模拟隐藏错误</button>
+      <button id="simulate-offscreen-error" type="button">模拟屏外错误</button>
+      <button id="hide-active-error" type="button">仅隐藏活动错误</button>
       <button id="reveal" type="button">显示全部 30 秒</button>
       <button id="benchmark" type="button">运行滚动压测</button>
       <button id="layout-benchmark" type="button">运行布局压测</button>
@@ -293,17 +311,54 @@ const result = sample${index}("long conversation");</code></pre>` : ""}
           window.finishThinking();
         });
 
-        document.getElementById("simulate-error").addEventListener("click", () => {
-          const existing = document.getElementById("fixture-error");
+        const toggleAlert = (id, message, configure = () => {}) => {
+          const existing = document.getElementById(id);
           if (existing) {
             existing.remove();
             return;
           }
           const alert = document.createElement("div");
-          alert.id = "fixture-error";
+          alert.id = id;
           alert.setAttribute("role", "alert");
-          alert.textContent = "Synthetic connection error";
+          alert.textContent = message;
+          configure(alert);
           document.body.append(alert);
+        };
+
+        document.getElementById("simulate-error").addEventListener("click", () => {
+          toggleAlert("fixture-error", "Synthetic connection error");
+        });
+
+        document.getElementById("simulate-explicit-error").addEventListener("click", () => {
+          toggleAlert("fixture-explicit-error", "Synthetic page failure", (alert) => {
+            alert.removeAttribute("role");
+            alert.dataset.state = "error";
+          });
+        });
+
+        document.getElementById("simulate-notice").addEventListener("click", () => {
+          toggleAlert("fixture-notice", "已复制到剪贴板");
+        });
+
+        document.getElementById("simulate-hidden-error").addEventListener("click", () => {
+          toggleAlert("fixture-hidden-error", "Network error", (alert) => {
+            alert.style.display = "none";
+          });
+        });
+
+        document.getElementById("simulate-offscreen-error").addEventListener("click", () => {
+          toggleAlert("fixture-offscreen-error", "Network error", (alert) => {
+            alert.style.position = "absolute";
+            alert.style.top = "20000px";
+          });
+        });
+
+        document.getElementById("hide-active-error").addEventListener("click", () => {
+          const activeError = document.getElementById("fixture-error")
+            || document.getElementById("fixture-explicit-error");
+          if (activeError) {
+            activeError.style.display = "none";
+          }
         });
 
         document.getElementById("reveal").addEventListener("click", () => {

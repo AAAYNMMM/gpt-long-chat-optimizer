@@ -84,11 +84,28 @@
 
   const CHUNK_MIN_COUNT = 8;
   const CHUNK_MAX_COUNT = 1_200;
-  const PAGE_ERROR_SELECTOR = [
+  const PAGE_ALERT_SELECTOR = [
     '[role="alert"]',
-    '[data-testid*="error"]',
-    '[data-state="error"]'
+    '[data-testid*="error" i]',
+    '[data-state="error" i]'
   ].join(",");
+  const EXPLICIT_ERROR_SELECTOR = [
+    '[data-testid*="error" i]',
+    '[data-state="error" i]'
+  ].join(",");
+  const ERROR_TEXT_PATTERNS = Object.freeze([
+    /\b(?:network|connection|websocket)\s+(?:error|failed|lost|interrupted|disconnected)\b/i,
+    /\b(?:unable|failed)\s+to\s+(?:connect|load|send|generate|stream)\b/i,
+    /\b(?:error|problem)\s+(?:occurred|generating|connecting)\b/i,
+    /\bsomething\s+went\s+wrong\b/i,
+    /\bplease\s+(?:try|retry)\s+again\b/i,
+    /\breconnecting\b/i,
+    /(?:网络|连接)(?:错误|异常|失败|中断|断开)/,
+    /无法(?:连接|加载|生成|发送)/,
+    /生成(?:回复|响应)时出错/,
+    /(?:出了点问题|发生错误|请重试|重新连接)/
+  ]);
+  const HEALTH_RECHECK_MS = 3_000;
 
   const STYLE_ID = "glco-runtime-style";
   const STYLE_TEXT = `
@@ -152,9 +169,10 @@
     chunkScanGeneration: 0,
     statusTimer: 0,
     healthTimer: 0,
+    healthRecheckTimer: 0,
     resumeTimer: 0,
     resizeTimer: 0,
-    pageAlert: false
+    healthIssue: "none"
   };
 
   function preset() {
@@ -876,7 +894,7 @@
       const target = record.target instanceof Element
         ? record.target
         : record.target.parentElement;
-      if (target?.matches(PAGE_ERROR_SELECTOR) && target.childNodes.length > 0) {
+      if (target?.matches(PAGE_ALERT_SELECTOR) && target.childNodes.length > 0) {
         return true;
       }
 
@@ -884,8 +902,8 @@
         if (
           node instanceof Element
           && (
-            node.matches(PAGE_ERROR_SELECTOR)
-            || node.querySelector(PAGE_ERROR_SELECTOR)
+            node.matches(PAGE_ALERT_SELECTOR)
+            || node.querySelector(PAGE_ALERT_SELECTOR)
           )
         ) {
           return true;
@@ -895,16 +913,92 @@
     return false;
   }
 
+  function isVisibleAlert(element) {
+    if (
+      !element.isConnected
+      || element.hidden
+      || element.getAttribute("aria-hidden") === "true"
+      || element.closest('[hidden], [aria-hidden="true"]')
+      || (
+        element.childNodes.length === 0
+        && !element.getAttribute("aria-label")
+      )
+    ) {
+      return false;
+    }
+
+    let cssVisible = true;
+    if (typeof element.checkVisibility === "function") {
+      try {
+        cssVisible = element.checkVisibility({
+          opacityProperty: true,
+          visibilityProperty: true
+        });
+      } catch {
+        // Older Chromium versions may only support checkVisibility() without options.
+        cssVisible = element.checkVisibility();
+      }
+    }
+    if (!cssVisible) {
+      return false;
+    }
+
+    // Geometry is limited to at most 12 alert candidates, never chat blocks.
+    const viewportWidth = document.documentElement.clientWidth || innerWidth;
+    const viewportHeight = document.documentElement.clientHeight || innerHeight;
+    return Array.from(element.getClientRects()).some((rect) => {
+      return rect.width > 0
+        && rect.height > 0
+        && rect.right >= 0
+        && rect.bottom >= 0
+        && rect.left <= viewportWidth
+        && rect.top <= viewportHeight;
+    });
+  }
+
+  function classifyPageAlert(element) {
+    if (!isVisibleAlert(element)) {
+      return "none";
+    }
+
+    const explicitError = element.matches(EXPLICIT_ERROR_SELECTOR);
+    const alertText = `${
+      element.getAttribute("aria-label") || ""
+    } ${
+      element.textContent || ""
+    }`.slice(0, 1_000);
+    if (ERROR_TEXT_PATTERNS.some((pattern) => pattern.test(alertText))) {
+      return "connection-error";
+    }
+    return explicitError ? "page-error" : "none";
+  }
+
   function scanHealth() {
     state.healthTimer = 0;
-    const alerts = Array.from(document.querySelectorAll(PAGE_ERROR_SELECTOR)).slice(0, 30);
-    state.pageAlert = alerts.some((element) => {
-      return !element.hidden
-        && element.getAttribute("aria-hidden") !== "true"
-        && !element.closest('[hidden], [aria-hidden="true"]')
-        && element.childNodes.length > 0;
-    });
+    clearTimeout(state.healthRecheckTimer);
+    state.healthRecheckTimer = 0;
+
+    let issue = navigator.onLine ? "none" : "offline";
+    if (issue === "none") {
+      const alerts = Array.from(new Set([
+        ...document.querySelectorAll(EXPLICIT_ERROR_SELECTOR),
+        ...document.querySelectorAll('[role="alert"]')
+      ])).slice(0, 12);
+      for (const alert of alerts) {
+        const classification = classifyPageAlert(alert);
+        if (classification !== "none") {
+          issue = classification;
+          break;
+        }
+      }
+    }
+
+    state.healthIssue = issue;
     document.documentElement.dataset.glcoOnline = navigator.onLine ? "true" : "false";
+    document.documentElement.dataset.glcoHealthIssue = issue;
+    if (issue === "connection-error" || issue === "page-error") {
+      state.healthRecheckTimer = setTimeout(scanHealth, HEALTH_RECHECK_MS);
+    }
     scheduleStatus();
   }
 
@@ -944,7 +1038,9 @@
       chunkActivationBlocks: preset().chunkActivationBlocks,
       startupRescue: document.documentElement.dataset.glcoStartup !== "false",
       online: navigator.onLine,
-      pageAlert: state.pageAlert
+      healthIssue: state.healthIssue,
+      pageAlert: state.healthIssue === "connection-error"
+        || state.healthIssue === "page-error"
     };
   }
 
@@ -960,6 +1056,7 @@
     root.dataset.glcoChunks = String(snapshot.chunks);
     root.dataset.glcoFrozenChunks = String(snapshot.frozenChunks);
     root.dataset.glcoPageAlert = String(snapshot.pageAlert);
+    root.dataset.glcoHealthIssue = snapshot.healthIssue;
 
     try {
       const result = chromeApi.runtime.sendMessage({
@@ -1057,6 +1154,7 @@
 
     chromeApi.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       if (message?.type === "GLCO_GET_STATUS") {
+        scanHealth();
         sendResponse(statusSnapshot());
         return;
       }

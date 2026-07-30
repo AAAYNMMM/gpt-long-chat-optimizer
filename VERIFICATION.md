@@ -2,7 +2,7 @@
 
 验证日期：2026-07-30
 
-目标版本：0.3.0
+目标版本：0.3.1
 
 目标浏览器：Chromium（Chrome / Edge）
 
@@ -21,7 +21,7 @@ node tests/recovery-check.mjs
 - 仅匹配 `chatgpt.com` 与旧版 `chat.openai.com`，没有额外主机权限。
 - `early.css` 与 `early.js` 在 `document_start` 注入，主内容脚本仍在 `document_idle` 接管。
 - 运行代码未包含 `fetch`、XHR、WebSocket、EventSource 或 Beacon。
-- 内容脚本未读取 `innerText` 或聊天节点的 `textContent`。
+- 内容脚本不读取 `innerText`；唯一的 `textContent` 读取被限制在候选错误提示的前 1000 个字符，用于本地分类，不扫描聊天正文。
 - 后续扫描不包含 `getBoundingClientRect` / `getComputedStyle`，不会集中触发同步布局。
 - MutationObserver 不监听 `characterData`，流式生成的每个文字变化不会触发整页重扫。
 - 救援流程测试确认：复制当前 ChatGPT 对话地址、在相邻标签页打开、休眠旧页，并拒绝非 ChatGPT 地址。
@@ -34,8 +34,8 @@ node tests/recovery-check.mjs
 | --- | --- |
 | 首次加载 | `glcoStartup=true`，1200 个思考段均为 `content-visibility:auto` |
 | 分批接管 | 1200 个块全部被追踪，页面状态为 `active` |
-| 连续刷新 5 次 | 5 次均完成加载与分批接管，无崩溃或脚本错误 |
-| 单次刷新观察窗口 | 包含固定 800ms 等待时，每次总耗时为 952–1014ms |
+| 连续刷新 3 次 | 3 次均完成加载与分批接管，健康状态保持 `none`，无崩溃或脚本错误 |
+| 单次刷新观察窗口 | 包含固定 800ms 等待时，每次总耗时为 929–953ms |
 | 本地控制台 | 无 warning / error |
 
 这些数字来自合成页面，不能证明真实 ChatGPT、网络或服务端一定不会失败；它们验证的是扩展自身不会在极长回复刷新时制造集中几何测量峰值。
@@ -51,12 +51,18 @@ node tests/recovery-check.mjs
 | 10 段、均衡模式 | 保持 `waiting`，但首屏 CSS 仍为 `auto` |
 | 10 段、强力模式 | 11 个语义块被追踪，增强层启动 |
 | 禁用状态 | `glcoStartup=false`、状态为 `disabled`、无追踪单元，计算样式为 `visible` |
-| 异常提示出现 / 移除 | `glcoPageAlert` 在 `true` / `false` 间正确切换，未读取提示文字 |
+| 普通 `[role="alert"]` 通知 | “已复制到剪贴板”保持 `healthIssue=none`，不显示红点 |
+| CSS 隐藏的连接错误 | `display:none` 的 “Network error” 保持 `healthIssue=none` |
+| 屏外连接错误 | 位于视口外的旧 “Network error” 保持 `healthIssue=none` |
+| 可见连接错误 | “Synthetic connection error” 分类为 `connection-error` |
+| 明确页面错误 | `data-state="error"` 分类为 `page-error` |
+| 错误节点移除 | 状态在 MutationObserver 复检后恢复为 `none` |
+| 错误仅被 CSS 隐藏 | 无 DOM 增删时，3 秒定时复检仍将状态恢复为 `none` |
 | 180 条长会话 | 180 条消息全部追踪；滚动往返后，9 条已测量旧消息显式冻结 |
 | 180 条滚动稳定性 | 页面高度从 76,986px 变为 76,891px，变化约 0.12% |
 | 嵌套滚动容器 | `main` 滚动至 33,371px，窗口保持 0，状态保持 `active` |
 
-v0.3.0 不再为了得到较大的“冻结数量”而预先测量所有离屏内容。未访问过的远处内容由浏览器原生 `content-visibility:auto` 处理；只有进入过视口缓冲区并获得可靠高度的内容，离开后才会显式冻结。
+v0.3.1 不再为了得到较大的“冻结数量”而预先测量所有离屏内容。未访问过的远处内容由浏览器原生 `content-visibility:auto` 处理；只有进入过视口缓冲区并获得可靠高度的内容，离开后才会显式冻结。
 
 ## 布局压力对照
 
@@ -70,6 +76,8 @@ v0.3.0 不再为了得到较大的“冻结数量”而预先测量所有离屏�
 | 第一轮 | 禁用扩展 | 8.980ms | 10.8ms |
 | 反向复核 | 禁用扩展 | 9.442ms | 13.9ms |
 | 反向复核 | 启用扩展 | 1.020ms | 1.5ms |
+
+v0.3.1 追加回归为平均 1.073ms、P95 1.3ms，健康检测改动未造成可见性能回退。
 
 ### 120 段长思考
 

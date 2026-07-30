@@ -130,7 +130,10 @@ function renderStatus(status) {
   elements.revealAll.disabled = !status.enabled || !status.active;
   updateRescueAvailability();
 
-  if (status.online === false) {
+  const healthIssue = status.healthIssue
+    || (status.online === false ? "offline" : (status.pageAlert ? "page-error" : "none"));
+
+  if (healthIssue === "offline") {
     elements.statusDot.className = "status-dot error";
     elements.statusTitle.textContent = "浏览器当前离线";
     elements.statusDetail.textContent = "恢复网络后可救援重开当前对话";
@@ -138,16 +141,24 @@ function renderStatus(status) {
     return;
   }
 
-  if (status.pageAlert) {
+  if (healthIssue === "connection-error") {
     elements.statusDot.className = "status-dot error";
-    elements.statusTitle.textContent = "页面出现异常提示";
+    elements.statusTitle.textContent = "检测到连接或生成错误";
     elements.statusDetail.textContent = "如生成未恢复，可在新标签页重开";
     elements.recoveryState.textContent = "可执行救援";
     return;
   }
 
+  if (healthIssue === "page-error") {
+    elements.statusDot.className = "status-dot error";
+    elements.statusTitle.textContent = "检测到页面错误";
+    elements.statusDetail.textContent = "错误仍显示时，可在新标签页重开";
+    elements.recoveryState.textContent = "可执行救援";
+    return;
+  }
+
   elements.recoveryState.textContent = status.startupRescue
-    ? "首屏保护运行中"
+    ? "连接状态正常"
     : "首屏保护已暂停";
 
   if (!status.enabled) {

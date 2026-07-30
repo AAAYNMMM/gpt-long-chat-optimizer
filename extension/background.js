@@ -99,7 +99,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   const frozen = Number.isFinite(status.frozen) ? status.frozen : 0;
   const frozenChunks = Number.isFinite(status.frozenChunks) ? status.frozenChunks : 0;
   const optimizedUnits = frozen + frozenChunks;
-  const hasPageIssue = status.online === false || status.pageAlert === true;
+  const healthIssue = status.healthIssue
+    || (status.online === false ? "offline" : (status.pageAlert ? "page-error" : "none"));
+  const hasPageIssue = healthIssue !== "none";
   const badgeText = hasPageIssue
     ? "!"
     : (
