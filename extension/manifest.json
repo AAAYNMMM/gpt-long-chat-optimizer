@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPT 长聊加速器",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "提前优化 ChatGPT 超长会话与长思考，并提供准确的异常检测和新标签页救援。",
   "permissions": [
     "storage",

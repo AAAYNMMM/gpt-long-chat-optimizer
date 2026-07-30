@@ -4,6 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>GPT 长聊加速器</title>
+    <link rel="icon" type="image/png" href="icons/icon-16.png">
     <link rel="stylesheet" href="popup.css">
   </head>
   <body>
@@ -53,36 +54,30 @@
           <span id="recovery-state">正在检测页面状态</span>
         </div>
         <p>
-          卡死或连接错误时，在新标签页重开当前对话，并休眠旧页释放内存。
+          卡死或连接错误时，用新标签页重开对话并休眠旧页。
         </p>
         <button id="rescue-reopen" class="rescue-button" type="button">
           救援重开当前对话
         </button>
-        <small id="recovery-result">旧标签页会保留，但未发送的输入可能无法恢复。</small>
+        <small id="recovery-result">旧页会保留；未发送内容可能无法恢复。</small>
       </section>
 
       <fieldset class="mode-fieldset">
         <legend>优化强度</legend>
         <label class="mode-option">
           <input type="radio" name="mode" value="safe">
-          <span>
-            <strong>稳妥</strong>
-            <small>长回复约 24 段、会话 60 条后增强</small>
-          </span>
+          <strong>稳妥</strong>
+          <small>长回复约 24 段 · 会话 60 条</small>
         </label>
         <label class="mode-option">
           <input type="radio" name="mode" value="balanced">
-          <span>
-            <strong>均衡</strong>
-            <small>长回复约 12 段、会话 30 条后增强</small>
-          </span>
+          <strong>均衡</strong>
+          <small>长回复约 12 段 · 会话 30 条</small>
         </label>
         <label class="mode-option">
           <input type="radio" name="mode" value="strong">
-          <span>
-            <strong>强力</strong>
-            <small>长回复约 8 段、会话 16 条后增强</small>
-          </span>
+          <strong>强力</strong>
+          <small>长回复约 8 段 · 会话 16 条</small>
         </label>
       </fieldset>
 

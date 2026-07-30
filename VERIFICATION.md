@@ -2,7 +2,7 @@
 
 验证日期：2026-07-30
 
-目标版本：0.3.1
+目标版本：0.3.2
 
 目标浏览器：Chromium（Chrome / Edge）
 
@@ -25,6 +25,25 @@ node tests/recovery-check.mjs
 - 后续扫描不包含 `getBoundingClientRect` / `getComputedStyle`，不会集中触发同步布局。
 - MutationObserver 不监听 `characterData`，流式生成的每个文字变化不会触发整页重扫。
 - 救援流程测试确认：复制当前 ChatGPT 对话地址、在相邻标签页打开、休眠旧页，并拒绝非 ChatGPT 地址。
+
+## 弹窗布局与交互回归
+
+使用 `tests/popup-visual-check.mjs` 在 Edge 无头模式中按扩展弹窗的 340 × 600 CSS 视口渲染：
+
+| 检查项 | 结果 |
+| --- | --- |
+| 页面内容高度 | 551px，低于 600px 视口 |
+| 根节点滚动尺寸 | 340 × 600，无横向或纵向溢出 |
+| 三档模式行高 | 均为 38px |
+| 门槛说明对齐 | 右边缘均为 311px，距卡片右边缘 11px |
+| 指针选择 | 可切换到“强力” |
+| 键盘选择 | `ArrowUp` 可从“强力”返回“均衡” |
+| 启用开关 | 暂停与恢复状态均正确 |
+| 页面救援 | 成功结果正确显示 |
+| 深色模式 | 340 × 600 下仍无溢出 |
+| 控制台 | 无 `pageerror` 或 error 日志 |
+
+同尺寸明暗截图和原版对照图保存在 `artifacts/design-qa`；完整视觉核对见 [design-qa.md](design-qa.md)。
 
 ## 首屏与连续刷新压力测试
 

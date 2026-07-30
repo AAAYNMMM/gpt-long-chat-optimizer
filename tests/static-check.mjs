@@ -5,15 +5,21 @@ import { fileURLToPath } from "node:url";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const extensionDir = join(here, "..", "extension");
+const packageJson = JSON.parse(
+  await readFile(join(here, "..", "package.json"), "utf8")
+);
 const manifest = JSON.parse(await readFile(join(extensionDir, "manifest.json"), "utf8"));
 const content = await readFile(join(extensionDir, "content.js"), "utf8");
 const early = await readFile(join(extensionDir, "early.js"), "utf8");
 const earlyCss = await readFile(join(extensionDir, "early.css"), "utf8");
 const background = await readFile(join(extensionDir, "background.js"), "utf8");
 const popup = await readFile(join(extensionDir, "popup.js"), "utf8");
+const popupHtml = await readFile(join(extensionDir, "popup.html"), "utf8");
+const popupCss = await readFile(join(extensionDir, "popup.css"), "utf8");
 
 assert.equal(manifest.manifest_version, 3);
-assert.equal(manifest.version, "0.3.1");
+assert.equal(manifest.version, "0.3.2");
+assert.equal(packageJson.version, manifest.version);
 assert.deepEqual(
   new Set(manifest.permissions),
   new Set(["storage", "activeTab"]),
@@ -76,5 +82,8 @@ assert.match(early, /glcoStartup/);
 assert.match(background, /GLCO_RESCUE_REOPEN/);
 assert.match(background, /chrome\.tabs\.discard/);
 assert.match(popup, /GLCO_RESCUE_REOPEN/);
+assert.doesNotMatch(popupHtml, /class="mode-option"[\s\S]*?<span>/);
+assert.match(popupCss, /grid-template-columns:\s*15px auto minmax\(0,\s*1fr\)/);
+assert.match(popupCss, /\.mode-option small\s*\{[\s\S]*?text-align:\s*right/);
 
 console.log("✓ Manifest、首屏注入、权限、语法、隐私边界与救援流程检查通过");

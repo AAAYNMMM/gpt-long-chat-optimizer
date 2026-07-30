@@ -49,6 +49,8 @@
 
 点击扩展图标可以救援重开、暂停优化、切换模式，或将所有内容临时恢复 30 秒。按 `Ctrl+F` / `⌘F` 和打印时也会自动临时恢复，避免影响页内查找与打印。
 
+弹窗中的模式名称与门槛采用左右单行布局，并压缩了重复说明和纵向间距；在常见的 340 × 600 弹窗视口中，主要状态、救援、模式和临时恢复操作无需滚动即可看到。
+
 ## 隐私
 
 - 不读取聊天正文或输入框内容。
@@ -87,6 +89,15 @@ http://127.0.0.1:4173/tests/fixture.html?count=3&thinking=120&mode=balanced
 node tests/static-check.mjs
 node tests/recovery-check.mjs
 ```
+
+弹窗 340 × 600 无滚动、交互和深色模式视觉回归：
+
+```powershell
+npm install
+npm run test:popup
+```
+
+运行视觉回归前需让上面的本地 HTTP 服务保持开启。测试会使用本机 Edge 的无头模式，并将同尺寸截图保存到 `artifacts/design-qa`。
 
 压测页还提供“运行滚动压测”和“运行布局压测”两个按钮。完整测试结果与边界说明见 [VERIFICATION.md](VERIFICATION.md)。
 
