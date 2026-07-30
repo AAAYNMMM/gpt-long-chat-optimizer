@@ -16,19 +16,34 @@
       activationTurns: 60,
       bufferScreens: 16,
       keepRecent: 14,
-      freezeFarTurns: false
+      freezeFarTurns: false,
+      chunkActivationScreens: 7,
+      chunkActivationBlocks: 24,
+      chunkBufferScreens: 10,
+      keepRecentChunks: 12,
+      freezeFarChunks: false
     }),
     balanced: Object.freeze({
       activationTurns: 30,
       bufferScreens: 10,
       keepRecent: 10,
-      freezeFarTurns: true
+      freezeFarTurns: true,
+      chunkActivationScreens: 3.5,
+      chunkActivationBlocks: 12,
+      chunkBufferScreens: 4,
+      keepRecentChunks: 8,
+      freezeFarChunks: true
     }),
     strong: Object.freeze({
       activationTurns: 16,
       bufferScreens: 6,
       keepRecent: 6,
-      freezeFarTurns: true
+      freezeFarTurns: true,
+      chunkActivationScreens: 2,
+      chunkActivationBlocks: 8,
+      chunkBufferScreens: 2.5,
+      keepRecentChunks: 5,
+      freezeFarChunks: true
     })
   });
 
@@ -42,19 +57,68 @@
     "[data-message-author-role]"
   ].join(",");
 
+  const CHUNK_SELECTOR = [
+    "p",
+    "pre",
+    "blockquote",
+    "ul",
+    "ol",
+    "table",
+    "figure",
+    "hr",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6"
+  ].join(",");
+
+  const DENSE_CONTENT_SELECTOR = [
+    '[data-testid*="reasoning"]',
+    '[data-testid*="thought"]',
+    '[data-testid*="thinking"]',
+    ".markdown",
+    ".prose"
+  ].join(",");
+
+  const CHUNK_MIN_COUNT = 8;
+  const CHUNK_MAX_COUNT = 1_200;
+  const PAGE_ERROR_SELECTOR = [
+    '[role="alert"]',
+    '[data-testid*="error"]',
+    '[data-state="error"]'
+  ].join(",");
+
   const STYLE_ID = "glco-runtime-style";
   const STYLE_TEXT = `
     html[data-glco-enabled="true"] [data-glco-turn="true"] {
       content-visibility: auto !important;
-      contain-intrinsic-block-size: auto var(--glco-intrinsic-size, 320px) !important;
+      contain-intrinsic-block-size: auto var(--glco-intrinsic-size, 360px) !important;
     }
 
     html[data-glco-enabled="true"] [data-glco-frozen="true"] {
       content-visibility: hidden !important;
     }
 
+    html[data-glco-enabled="true"] [data-glco-chunk="true"] {
+      content-visibility: auto !important;
+      contain-intrinsic-block-size: auto var(--glco-chunk-size, var(--glco-startup-size, 64px)) !important;
+    }
+
+    html[data-glco-enabled="true"] [data-glco-chunk-frozen="true"] {
+      content-visibility: hidden !important;
+    }
+
+    html[data-glco-state="paused"] [data-glco-turn="true"],
+    html[data-glco-state="paused"] [data-glco-chunk="true"] {
+      content-visibility: visible !important;
+      contain-intrinsic-size: none !important;
+    }
+
     @media print {
-      html[data-glco-enabled="true"] [data-glco-turn="true"] {
+      html[data-glco-enabled="true"] [data-glco-turn="true"],
+      html[data-glco-enabled="true"] [data-glco-chunk="true"] {
         content-visibility: visible !important;
         contain-intrinsic-size: none !important;
       }
@@ -65,17 +129,32 @@
     settings: { ...DEFAULT_SETTINGS },
     turns: [],
     turnSet: new Set(),
+    turnIndexes: new WeakMap(),
     heights: new WeakMap(),
     active: false,
+    chunks: new Set(),
+    chunksByTurn: new Map(),
+    chunkOwners: new WeakMap(),
+    chunkIndexes: new WeakMap(),
+    chunkHeights: new WeakMap(),
+    chunkActive: false,
     pausedUntil: 0,
     scrollRoot: null,
+    chunkScrollRoot: null,
     intersectionObserver: null,
+    chunkIntersectionObserver: null,
     resizeObserver: null,
+    chunkResizeObserver: null,
     mutationObserver: null,
     scanTimer: 0,
+    chunkScanTimer: 0,
+    chunkBatchTimer: 0,
+    chunkScanGeneration: 0,
     statusTimer: 0,
+    healthTimer: 0,
     resumeTimer: 0,
-    resizeTimer: 0
+    resizeTimer: 0,
+    pageAlert: false
   };
 
   function preset() {
@@ -144,30 +223,111 @@
     return unique;
   }
 
-  function findScrollRoot(element) {
-    let current = element?.parentElement ?? null;
-    while (current && current !== document.documentElement) {
-      const style = getComputedStyle(current);
-      if (
-        /(auto|scroll|overlay)/.test(style.overflowY)
-        && current.scrollHeight > current.clientHeight + 2
-      ) {
-        return current;
-      }
-      current = current.parentElement;
+  function assistantContentRoot(turn) {
+    const roleElement = turn.matches('[data-message-author-role="assistant"]')
+      ? turn
+      : turn.querySelector('[data-message-author-role="assistant"]');
+    return roleElement instanceof HTMLElement ? roleElement : null;
+  }
+
+  function collectChunks(turn) {
+    const contentRoot = assistantContentRoot(turn);
+    if (!contentRoot) {
+      return [];
     }
-    return null;
+
+    const raw = new Set(contentRoot.querySelectorAll(CHUNK_SELECTOR));
+    const denseContainers = Array.from(new Set([
+      contentRoot,
+      ...contentRoot.querySelectorAll(DENSE_CONTENT_SELECTOR)
+    ])).slice(0, 120);
+
+    for (const container of denseContainers) {
+      if (container.children.length < CHUNK_MIN_COUNT) {
+        continue;
+      }
+      for (const child of container.children) {
+        if (
+          child instanceof HTMLElement
+          && (
+            child.matches(CHUNK_SELECTOR)
+            || child.matches("div, section, article")
+          )
+        ) {
+          raw.add(child);
+        }
+      }
+    }
+
+    const candidates = Array.from(raw).filter((element) => {
+      if (
+        !(element instanceof HTMLElement)
+        || !element.isConnected
+        || element === contentRoot
+        || element.closest('[data-glco-ignore="true"]')
+        || element.matches("script, style, template, button, input, textarea, select")
+      ) {
+        return false;
+      }
+
+      let ancestor = element.parentElement;
+      while (ancestor && ancestor !== contentRoot) {
+        if (raw.has(ancestor)) {
+          return false;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      return true;
+    });
+
+    candidates.sort((left, right) => {
+      if (left === right) {
+        return 0;
+      }
+      return left.compareDocumentPosition(right) & 4 ? -1 : 1;
+    });
+
+    if (candidates.length <= CHUNK_MAX_COUNT) {
+      return candidates;
+    }
+
+    const tailSize = Math.max(100, preset().keepRecentChunks * 4);
+    return [
+      ...candidates.slice(0, CHUNK_MAX_COUNT - tailSize),
+      ...candidates.slice(-tailSize)
+    ];
+  }
+
+  function viewportHeightFor(root = state.scrollRoot) {
+    return Math.max(
+      1,
+      root?.clientHeight || document.documentElement.clientHeight || innerHeight || 800
+    );
   }
 
   function currentViewportHeight() {
-    return Math.max(
-      1,
-      state.scrollRoot?.clientHeight || document.documentElement.clientHeight || innerHeight || 800
-    );
+    return viewportHeightFor(state.scrollRoot);
   }
 
   function isPaused() {
     return Date.now() < state.pausedUntil;
+  }
+
+  function hasProtectedInteraction(element) {
+    const activeElement = document.activeElement;
+    if (activeElement && element.contains(activeElement)) {
+      return true;
+    }
+
+    const selection = getSelection();
+    return Boolean(
+      selection
+      && !selection.isCollapsed
+      && (
+        (selection.anchorNode && element.contains(selection.anchorNode))
+        || (selection.focusNode && element.contains(selection.focusNode))
+      )
+    );
   }
 
   function isProtectedTurn(turn) {
@@ -176,7 +336,7 @@
     }
 
     const keepRecent = preset().keepRecent;
-    const index = state.turns.indexOf(turn);
+    const index = state.turnIndexes.get(turn) ?? -1;
     if (index >= Math.max(0, state.turns.length - keepRecent)) {
       return true;
     }
@@ -188,46 +348,22 @@
       return true;
     }
 
-    const activeElement = document.activeElement;
-    if (activeElement && turn.contains(activeElement)) {
+    return hasProtectedInteraction(turn);
+  }
+
+  function isProtectedChunk(chunk) {
+    if (!chunk?.isConnected || isPaused()) {
       return true;
     }
 
-    const selection = getSelection();
-    return Boolean(
-      selection
-      && !selection.isCollapsed
-      && (
-        (selection.anchorNode && turn.contains(selection.anchorNode))
-        || (selection.focusNode && turn.contains(selection.focusNode))
-      )
-    );
-  }
-
-  function measuredContentHeight(turn) {
-    const rectHeight = turn.getBoundingClientRect().height;
-    const style = getComputedStyle(turn);
-    const boxExtras = (
-      Number.parseFloat(style.paddingBlockStart || style.paddingTop) || 0
-    ) + (
-      Number.parseFloat(style.paddingBlockEnd || style.paddingBottom) || 0
-    ) + (
-      Number.parseFloat(style.borderBlockStartWidth || style.borderTopWidth) || 0
-    ) + (
-      Number.parseFloat(style.borderBlockEndWidth || style.borderBottomWidth) || 0
-    );
-    return Math.max(0, Math.round(rectHeight - boxExtras));
-  }
-
-  function rememberHeight(turn) {
-    if (!turn?.isConnected || turn.dataset.glcoFrozen === "true") {
-      return;
+    const owner = state.chunkOwners.get(chunk);
+    const index = state.chunkIndexes.get(chunk) ?? -1;
+    const siblingCount = state.chunksByTurn.get(owner)?.length ?? 0;
+    if (index >= Math.max(0, siblingCount - preset().keepRecentChunks)) {
+      return true;
     }
-    const height = measuredContentHeight(turn);
-    if (height > 0) {
-      state.heights.set(turn, height);
-      turn.style.setProperty("--glco-intrinsic-size", `${height}px`);
-    }
+
+    return hasProtectedInteraction(chunk);
   }
 
   function thaw(turn) {
@@ -247,17 +383,49 @@
       return;
     }
 
-    rememberHeight(turn);
     const remembered = state.heights.get(turn);
-    if (remembered > 0) {
-      turn.style.setProperty("--glco-intrinsic-size", `${remembered}px`);
+    if (!(remembered > 0)) {
+      thaw(turn);
+      return;
     }
+    turn.style.setProperty("--glco-intrinsic-size", `${remembered}px`);
     turn.dataset.glcoFrozen = "true";
+  }
+
+  function thawChunk(chunk) {
+    if (chunk) {
+      delete chunk.dataset.glcoChunkFrozen;
+    }
+  }
+
+  function freezeChunk(chunk) {
+    if (
+      !state.chunkActive
+      || !preset().freezeFarChunks
+      || isProtectedChunk(chunk)
+    ) {
+      thawChunk(chunk);
+      return;
+    }
+
+    const remembered = state.chunkHeights.get(chunk);
+    if (!(remembered > 0)) {
+      thawChunk(chunk);
+      return;
+    }
+    chunk.style.setProperty("--glco-chunk-size", `${remembered}px`);
+    chunk.dataset.glcoChunkFrozen = "true";
   }
 
   function thawAll() {
     for (const turn of state.turns) {
       thaw(turn);
+    }
+  }
+
+  function thawAllChunks() {
+    for (const chunk of state.chunks) {
+      thawChunk(chunk);
     }
   }
 
@@ -274,6 +442,31 @@
           if (height > 0) {
             state.heights.set(entry.target, height);
             entry.target.style.setProperty("--glco-intrinsic-size", `${height}px`);
+            if (
+              assistantContentRoot(entry.target)
+              && height >= viewportHeightFor() * 1.5
+            ) {
+              scheduleChunkScan();
+            }
+          }
+        }
+      }
+    });
+  }
+
+  function ensureChunkResizeObserver() {
+    if (state.chunkResizeObserver || typeof ResizeObserver !== "function") {
+      return;
+    }
+    state.chunkResizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.target.dataset.glcoChunkFrozen !== "true") {
+          const height = Math.round(
+            entry.contentBoxSize?.[0]?.blockSize || entry.contentRect.height
+          );
+          if (height > 0) {
+            state.chunkHeights.set(entry.target, height);
+            entry.target.style.setProperty("--glco-chunk-size", `${height}px`);
           }
         }
       }
@@ -285,20 +478,32 @@
     state.intersectionObserver = null;
   }
 
+  function destroyChunkIntersectionObserver() {
+    state.chunkIntersectionObserver?.disconnect();
+    state.chunkIntersectionObserver = null;
+  }
+
   function createIntersectionObserver() {
     destroyIntersectionObserver();
     if (!state.active || typeof IntersectionObserver !== "function") {
       return;
     }
 
+    state.resizeObserver?.disconnect();
     const margin = Math.round(currentViewportHeight() * preset().bufferScreens);
     state.intersectionObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
-        if (entry.isIntersecting || !preset().freezeFarTurns) {
+        if (entry.isIntersecting) {
           thaw(entry.target);
-          rememberHeight(entry.target);
+          state.resizeObserver?.observe(entry.target);
+          scheduleChunkScan(0);
         } else {
-          freeze(entry.target);
+          state.resizeObserver?.unobserve(entry.target);
+          if (preset().freezeFarTurns) {
+            freeze(entry.target);
+          } else {
+            thaw(entry.target);
+          }
         }
       }
       scheduleStatus();
@@ -313,12 +518,76 @@
     }
   }
 
+  function createChunkIntersectionObserver() {
+    destroyChunkIntersectionObserver();
+    if (
+      !state.chunkActive
+      || isPaused()
+      || typeof IntersectionObserver !== "function"
+    ) {
+      return;
+    }
+
+    state.chunkResizeObserver?.disconnect();
+    const margin = Math.round(
+      viewportHeightFor(state.chunkScrollRoot) * preset().chunkBufferScreens
+    );
+    state.chunkIntersectionObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          thawChunk(entry.target);
+          state.chunkResizeObserver?.observe(entry.target);
+        } else {
+          state.chunkResizeObserver?.unobserve(entry.target);
+          if (preset().freezeFarChunks) {
+            freezeChunk(entry.target);
+          } else {
+            thawChunk(entry.target);
+          }
+        }
+      }
+      scheduleStatus();
+    }, {
+      root: state.chunkScrollRoot,
+      rootMargin: `${margin}px 0px ${margin}px 0px`,
+      threshold: 0
+    });
+
+    for (const chunk of state.chunks) {
+      state.chunkIntersectionObserver.observe(chunk);
+    }
+  }
+
   function cleanTurn(turn) {
     state.intersectionObserver?.unobserve(turn);
     state.resizeObserver?.unobserve(turn);
     delete turn.dataset.glcoTurn;
     delete turn.dataset.glcoFrozen;
     turn.style.removeProperty("--glco-intrinsic-size");
+  }
+
+  function cleanChunk(chunk) {
+    state.chunkIntersectionObserver?.unobserve(chunk);
+    state.chunkResizeObserver?.unobserve(chunk);
+    delete chunk.dataset.glcoChunk;
+    delete chunk.dataset.glcoChunkFrozen;
+    chunk.style.removeProperty("--glco-chunk-size");
+  }
+
+  function deactivateChunks() {
+    destroyChunkIntersectionObserver();
+    state.chunkResizeObserver?.disconnect();
+    state.chunkResizeObserver = null;
+    for (const chunk of state.chunks) {
+      cleanChunk(chunk);
+    }
+    state.chunks = new Set();
+    state.chunksByTurn = new Map();
+    state.chunkOwners = new WeakMap();
+    state.chunkIndexes = new WeakMap();
+    state.chunkHeights = new WeakMap();
+    state.chunkActive = false;
+    state.chunkScrollRoot = null;
   }
 
   function deactivate() {
@@ -330,9 +599,140 @@
       cleanTurn(turn);
     }
     state.heights = new WeakMap();
+    state.turnIndexes = new WeakMap();
     document.documentElement.dataset.glcoEnabled = String(state.settings.enabled);
     document.documentElement.dataset.glcoState = state.settings.enabled ? "waiting" : "disabled";
     delete document.documentElement.dataset.glcoMode;
+  }
+
+  function finishChunkScan(generation, nextByTurn, nextChunks) {
+    if (generation !== state.chunkScanGeneration) {
+      return;
+    }
+    for (const chunk of state.chunks) {
+      if (!nextChunks.has(chunk)) {
+        cleanChunk(chunk);
+      }
+    }
+
+    if (nextChunks.size === 0) {
+      state.chunks = nextChunks;
+      state.chunksByTurn = nextByTurn;
+      state.chunkOwners = new WeakMap();
+      state.chunkIndexes = new WeakMap();
+      state.chunkHeights = new WeakMap();
+      state.chunkActive = false;
+      destroyChunkIntersectionObserver();
+      state.chunkResizeObserver?.disconnect();
+      state.chunkResizeObserver = null;
+      state.chunkScrollRoot = null;
+      scheduleStatus(true);
+      return;
+    }
+
+    const nextOwners = new WeakMap();
+    const nextIndexes = new WeakMap();
+    for (const [turn, chunks] of nextByTurn) {
+      chunks.forEach((chunk, index) => {
+        nextOwners.set(chunk, turn);
+        nextIndexes.set(chunk, index);
+      });
+    }
+
+    state.chunks = nextChunks;
+    state.chunksByTurn = nextByTurn;
+    state.chunkOwners = nextOwners;
+    state.chunkIndexes = nextIndexes;
+    state.chunkActive = true;
+    ensureChunkResizeObserver();
+
+    for (const chunk of nextChunks) {
+      const remembered = state.chunkHeights.get(chunk);
+      if (remembered > 0) {
+        chunk.style.setProperty("--glco-chunk-size", `${remembered}px`);
+      }
+      chunk.dataset.glcoChunk = "true";
+    }
+
+    state.chunkScrollRoot = null;
+    if (isPaused()) {
+      thawAllChunks();
+      destroyChunkIntersectionObserver();
+    } else if (!state.chunkIntersectionObserver) {
+      createChunkIntersectionObserver();
+    } else {
+      for (const chunk of nextChunks) {
+        state.chunkIntersectionObserver.observe(chunk);
+      }
+    }
+
+    for (const chunks of nextByTurn.values()) {
+      for (const chunk of chunks.slice(-preset().keepRecentChunks)) {
+        thawChunk(chunk);
+      }
+    }
+    scheduleStatus(true);
+  }
+
+  function scanChunks() {
+    state.chunkScanTimer = 0;
+    clearTimeout(state.chunkBatchTimer);
+    state.chunkBatchTimer = 0;
+    const generation = ++state.chunkScanGeneration;
+
+    if (!state.settings.enabled || state.turns.length === 0) {
+      deactivateChunks();
+      scheduleStatus(true);
+      return;
+    }
+
+    const turns = [...state.turns];
+    const nextByTurn = new Map();
+    const nextChunks = new Set();
+    const minimumHeight = viewportHeightFor() * preset().chunkActivationScreens;
+    let turnIndex = 0;
+
+    const processBatch = () => {
+      state.chunkBatchTimer = 0;
+      if (generation !== state.chunkScanGeneration) {
+        return;
+      }
+
+      const started = performance.now();
+      let processed = 0;
+      while (
+        turnIndex < turns.length
+        && (processed === 0 || (processed < 6 && performance.now() - started < 8))
+      ) {
+        const turn = turns[turnIndex++];
+        processed += 1;
+        if (turn.dataset.glcoFrozen === "true" || !assistantContentRoot(turn)) {
+          continue;
+        }
+
+        const chunks = collectChunks(turn);
+        const knownHeight = state.heights.get(turn) ?? 0;
+        const largeEnough = chunks.length >= preset().chunkActivationBlocks
+          || knownHeight >= minimumHeight;
+        if (chunks.length < CHUNK_MIN_COUNT || !largeEnough) {
+          continue;
+        }
+
+        nextByTurn.set(turn, chunks);
+        for (const chunk of chunks) {
+          nextChunks.add(chunk);
+        }
+      }
+
+      if (turnIndex < turns.length) {
+        state.chunkBatchTimer = setTimeout(processBatch, 0);
+        return;
+      }
+
+      finishChunkScan(generation, nextByTurn, nextChunks);
+    };
+
+    state.chunkBatchTimer = setTimeout(processBatch, 0);
   }
 
   function activate(turns) {
@@ -343,33 +743,16 @@
 
     ensureResizeObserver();
 
-    // Batch every initial geometry read before applying content-visibility.
-    // This prevents a generic fallback height from changing the scroll range.
-    for (const turn of turns) {
-      if (!state.heights.has(turn) && turn.dataset.glcoTurn !== "true") {
-        const height = measuredContentHeight(turn);
-        if (height > 0) {
-          state.heights.set(turn, height);
-        }
-      }
-    }
-
     for (const turn of turns) {
       const remembered = state.heights.get(turn);
       if (remembered > 0) {
         turn.style.setProperty("--glco-intrinsic-size", `${remembered}px`);
       }
       turn.dataset.glcoTurn = "true";
-      if (!(remembered > 0)) {
-        rememberHeight(turn);
-      }
-      state.resizeObserver?.observe(turn);
     }
 
-    const nextRoot = findScrollRoot(turns[0]);
-    const rootChanged = nextRoot !== state.scrollRoot;
-    state.scrollRoot = nextRoot;
-    if (rootChanged || !state.intersectionObserver) {
+    state.scrollRoot = null;
+    if (!state.intersectionObserver) {
       createIntersectionObserver();
     } else {
       for (const turn of turns) {
@@ -395,14 +778,19 @@
 
     state.turns = turns;
     state.turnSet = nextSet;
+    const nextIndexes = new WeakMap();
+    turns.forEach((turn, index) => nextIndexes.set(turn, index));
+    state.turnIndexes = nextIndexes;
 
     if (!state.settings.enabled || turns.length < preset().activationTurns) {
       deactivate();
+      scanChunks();
       scheduleStatus(true);
       return;
     }
 
     activate(turns);
+    scanChunks();
     scheduleStatus(true);
   }
 
@@ -411,6 +799,13 @@
       clearTimeout(state.scanTimer);
     }
     state.scanTimer = setTimeout(scan, delay);
+  }
+
+  function scheduleChunkScan(delay = 320) {
+    if (state.chunkScanTimer) {
+      return;
+    }
+    state.chunkScanTimer = setTimeout(scanChunks, delay);
   }
 
   function mutationCanChangeTurns(records) {
@@ -443,6 +838,83 @@
     return false;
   }
 
+  function mutationCanChangeChunks(records) {
+    for (const record of records) {
+      if (record.type !== "childList") {
+        continue;
+      }
+      const changedElements = [...record.addedNodes, ...record.removedNodes]
+        .some((node) => node instanceof Element);
+      if (!changedElements) {
+        continue;
+      }
+
+      const target = record.target instanceof Element
+        ? record.target
+        : record.target.parentElement;
+      if (target?.closest('[data-message-author-role="assistant"]')) {
+        return true;
+      }
+
+      for (const node of record.addedNodes) {
+        if (
+          node instanceof Element
+          && (
+            node.matches('[data-message-author-role="assistant"]')
+            || node.querySelector('[data-message-author-role="assistant"]')
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function mutationCanChangeHealth(records) {
+    for (const record of records) {
+      const target = record.target instanceof Element
+        ? record.target
+        : record.target.parentElement;
+      if (target?.matches(PAGE_ERROR_SELECTOR) && target.childNodes.length > 0) {
+        return true;
+      }
+
+      for (const node of [...record.addedNodes, ...record.removedNodes]) {
+        if (
+          node instanceof Element
+          && (
+            node.matches(PAGE_ERROR_SELECTOR)
+            || node.querySelector(PAGE_ERROR_SELECTOR)
+          )
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  function scanHealth() {
+    state.healthTimer = 0;
+    const alerts = Array.from(document.querySelectorAll(PAGE_ERROR_SELECTOR)).slice(0, 30);
+    state.pageAlert = alerts.some((element) => {
+      return !element.hidden
+        && element.getAttribute("aria-hidden") !== "true"
+        && !element.closest('[hidden], [aria-hidden="true"]')
+        && element.childNodes.length > 0;
+    });
+    document.documentElement.dataset.glcoOnline = navigator.onLine ? "true" : "false";
+    scheduleStatus();
+  }
+
+  function scheduleHealthScan(delay = 180) {
+    if (state.healthTimer) {
+      return;
+    }
+    state.healthTimer = setTimeout(scanHealth, delay);
+  }
+
   function statusSnapshot() {
     let frozen = 0;
     for (const turn of state.turns) {
@@ -451,14 +923,28 @@
       }
     }
 
+    let frozenChunks = 0;
+    for (const chunk of state.chunks) {
+      if (chunk.dataset.glcoChunkFrozen === "true") {
+        frozenChunks += 1;
+      }
+    }
+
     return {
       enabled: state.settings.enabled,
-      active: state.active,
+      active: state.active || state.chunkActive,
       paused: isPaused(),
       mode: state.settings.mode,
       turns: state.turns.length,
       frozen,
-      activationTurns: preset().activationTurns
+      chunks: state.chunks.size,
+      frozenChunks,
+      thinkingOptimized: state.chunkActive,
+      activationTurns: preset().activationTurns,
+      chunkActivationBlocks: preset().chunkActivationBlocks,
+      startupRescue: document.documentElement.dataset.glcoStartup !== "false",
+      online: navigator.onLine,
+      pageAlert: state.pageAlert
     };
   }
 
@@ -471,6 +957,9 @@
       : "disabled";
     root.dataset.glcoTurns = String(snapshot.turns);
     root.dataset.glcoFrozen = String(snapshot.frozen);
+    root.dataset.glcoChunks = String(snapshot.chunks);
+    root.dataset.glcoFrozenChunks = String(snapshot.frozenChunks);
+    root.dataset.glcoPageAlert = String(snapshot.pageAlert);
 
     try {
       const result = chromeApi.runtime.sendMessage({
@@ -494,12 +983,17 @@
     state.pausedUntil = Date.now() + durationMs;
     clearTimeout(state.resumeTimer);
     thawAll();
+    thawAllChunks();
     destroyIntersectionObserver();
+    destroyChunkIntersectionObserver();
     scheduleStatus(true);
     state.resumeTimer = setTimeout(() => {
       state.pausedUntil = 0;
       if (state.active) {
         createIntersectionObserver();
+      }
+      if (state.chunkActive) {
+        createChunkIntersectionObserver();
       }
       scheduleStatus(true);
     }, durationMs);
@@ -511,6 +1005,9 @@
       if (state.active) {
         createIntersectionObserver();
       }
+      thawAllChunks();
+      destroyChunkIntersectionObserver();
+      scheduleChunkScan(0);
     }, 180);
   }
 
@@ -519,6 +1016,12 @@
       if (mutationCanChangeTurns(records)) {
         scheduleScan();
       }
+      if (state.settings.enabled && mutationCanChangeChunks(records)) {
+        scheduleChunkScan();
+      }
+      if (mutationCanChangeHealth(records)) {
+        scheduleHealthScan();
+      }
     });
     state.mutationObserver.observe(document.documentElement, {
       childList: true,
@@ -526,7 +1029,12 @@
     });
 
     addEventListener("resize", refreshAfterResize, { passive: true });
-    addEventListener("pageshow", () => scheduleScan(0), { passive: true });
+    addEventListener("pageshow", () => {
+      scheduleScan(0);
+      scheduleHealthScan(0);
+    }, { passive: true });
+    addEventListener("online", () => scheduleHealthScan(0), { passive: true });
+    addEventListener("offline", () => scheduleHealthScan(0), { passive: true });
     addEventListener("beforeprint", () => pauseOptimization(5_000), { passive: true });
     document.addEventListener("keydown", (event) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -543,6 +1051,7 @@
         mode: changes.mode?.newValue ?? state.settings.mode
       });
       destroyIntersectionObserver();
+      destroyChunkIntersectionObserver();
       scheduleScan(0);
     });
 
@@ -571,7 +1080,8 @@
     injectStyles();
     state.settings = await loadSettings();
     installObservers();
-    scan();
+    scanHealth();
+    scheduleScan(40);
   }
 
   start();

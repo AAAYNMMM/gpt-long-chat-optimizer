@@ -38,9 +38,27 @@
           </div>
           <div>
             <strong id="frozen-count">—</strong>
-            <span>已冻结离屏</span>
+            <span>离屏消息</span>
+          </div>
+          <div>
+            <strong id="chunk-count">—</strong>
+            <span>思考旧段</span>
           </div>
         </div>
+      </section>
+
+      <section class="recovery-card" aria-labelledby="recovery-title">
+        <div>
+          <strong id="recovery-title">页面救援</strong>
+          <span id="recovery-state">首屏保护已就绪</span>
+        </div>
+        <p>
+          卡死或连接错误时，在新标签页重开当前对话，并休眠旧页释放内存。
+        </p>
+        <button id="rescue-reopen" class="rescue-button" type="button">
+          救援重开当前对话
+        </button>
+        <small id="recovery-result">旧标签页会保留，但未发送的输入可能无法恢复。</small>
       </section>
 
       <fieldset class="mode-fieldset">
@@ -49,21 +67,21 @@
           <input type="radio" name="mode" value="safe">
           <span>
             <strong>稳妥</strong>
-            <small>60 条后，仅使用原生跳过渲染</small>
+            <small>长回复约 24 段、会话 60 条后增强</small>
           </span>
         </label>
         <label class="mode-option">
           <input type="radio" name="mode" value="balanced">
           <span>
             <strong>均衡</strong>
-            <small>30 条后冻结远处消息，推荐</small>
+            <small>长回复约 12 段、会话 30 条后增强</small>
           </span>
         </label>
         <label class="mode-option">
           <input type="radio" name="mode" value="strong">
           <span>
             <strong>强力</strong>
-            <small>16 条后生效，适合特别长的会话</small>
+            <small>长回复约 8 段、会话 16 条后增强</small>
           </span>
         </label>
       </fieldset>

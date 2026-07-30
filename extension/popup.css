@@ -133,6 +133,71 @@ button:focus-visible,
   box-shadow: 0 8px 28px rgba(42, 48, 72, 0.08);
 }
 
+.recovery-card {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: 13px;
+  background: rgba(255, 250, 235, 0.88);
+}
+
+.recovery-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recovery-card strong {
+  font-size: 12px;
+}
+
+.recovery-card span {
+  color: #a35d08;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.recovery-card p {
+  margin: 6px 0 9px;
+  color: #70604d;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.recovery-card small {
+  display: block;
+  min-height: 14px;
+  margin-top: 7px;
+  color: #877663;
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.rescue-button {
+  width: 100%;
+  padding: 9px 11px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: linear-gradient(135deg, #db7a0b, #c45b29);
+  box-shadow: 0 5px 14px rgba(196, 91, 41, 0.18);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rescue-button:hover {
+  filter: brightness(1.04);
+}
+
+.rescue-button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.48;
+}
+
 .status-card > div:first-child {
   display: flex;
   align-items: center;
@@ -175,21 +240,21 @@ button:focus-visible,
 
 .stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
 .stats > div {
   display: flex;
   flex-direction: column;
-  padding: 9px 10px;
+  padding: 9px 7px;
   border-radius: 11px;
   background: #f3f4fa;
 }
 
 .stats strong {
   color: #4138c2;
-  font-size: 18px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -310,10 +375,25 @@ button:focus-visible,
   }
 
   .status-card,
+  .recovery-card,
   .mode-option,
   .secondary-button {
     border-color: rgba(191, 196, 218, 0.13);
     background: rgba(35, 38, 51, 0.9);
+  }
+
+  .recovery-card {
+    border-color: rgba(229, 158, 62, 0.22);
+    background: rgba(61, 45, 30, 0.9);
+  }
+
+  .recovery-card p,
+  .recovery-card small {
+    color: #c5b5a2;
+  }
+
+  .recovery-card span {
+    color: #f0b45c;
   }
 
   .stats > div {

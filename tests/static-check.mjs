@@ -7,10 +7,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const extensionDir = join(here, "..", "extension");
 const manifest = JSON.parse(await readFile(join(extensionDir, "manifest.json"), "utf8"));
 const content = await readFile(join(extensionDir, "content.js"), "utf8");
+const early = await readFile(join(extensionDir, "early.js"), "utf8");
+const earlyCss = await readFile(join(extensionDir, "early.css"), "utf8");
 const background = await readFile(join(extensionDir, "background.js"), "utf8");
 const popup = await readFile(join(extensionDir, "popup.js"), "utf8");
 
 assert.equal(manifest.manifest_version, 3);
+assert.equal(manifest.version, "0.3.0");
 assert.deepEqual(
   new Set(manifest.permissions),
   new Set(["storage", "activeTab"]),
@@ -21,8 +24,13 @@ assert.deepEqual(
   manifest.content_scripts[0].matches,
   ["https://chatgpt.com/*", "https://chat.openai.com/*"]
 );
+assert.equal(manifest.content_scripts[0].run_at, "document_start");
+assert.deepEqual(manifest.content_scripts[0].css, ["early.css"]);
+assert.deepEqual(manifest.content_scripts[0].js, ["early.js"]);
+assert.equal(manifest.content_scripts[1].run_at, "document_idle");
+assert.deepEqual(manifest.content_scripts[1].js, ["content.js"]);
 
-for (const file of [content, background, popup]) {
+for (const file of [content, early, background, popup]) {
   assert.doesNotMatch(
     file,
     /\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b/,
@@ -34,6 +42,16 @@ for (const file of [content, background, popup]) {
 
 assert.match(content, /content-visibility:\s*auto/);
 assert.match(content, /content-visibility:\s*hidden/);
+assert.match(content, /data-glco-chunk="true"/);
+assert.match(content, /data-glco-chunk-frozen="true"/);
+assert.match(content, /chunkActivationScreens/);
+assert.match(content, /chunkActivationBlocks/);
+assert.doesNotMatch(
+  content,
+  /characterData:\s*true/,
+  "内容观察器不应在流式生成的每个文字变化上触发"
+);
+assert.match(content, /childList:\s*true/);
 assert.match(content, /data-testid\^="conversation-turn-"/);
 assert.match(content, /data-message-author-role/);
 assert.doesNotMatch(content, /\.innerText\b/, "内容脚本不应读取会话文字");
@@ -42,5 +60,15 @@ assert.doesNotMatch(
   /\.textContent\b(?!\s*=)/,
   "内容脚本不应读取会话文字"
 );
+assert.doesNotMatch(
+  content,
+  /\b(getBoundingClientRect|getComputedStyle)\b/,
+  "内容脚本不应在初始扫描中强制同步布局"
+);
+assert.match(earlyCss, /content-visibility:\s*auto/);
+assert.match(early, /glcoStartup/);
+assert.match(background, /GLCO_RESCUE_REOPEN/);
+assert.match(background, /chrome\.tabs\.discard/);
+assert.match(popup, /GLCO_RESCUE_REOPEN/);
 
-console.log("✓ Manifest、权限、语法、隐私边界与核心优化规则检查通过");
+console.log("✓ Manifest、首屏注入、权限、语法、隐私边界与救援流程检查通过");
