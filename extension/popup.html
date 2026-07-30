@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GPT 长聊加速器</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="header">
+        <div class="brand-mark" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <div>
+          <h1>长聊加速器</h1>
+          <p>让超长 GPT 会话重新顺滑</p>
+        </div>
+        <label class="switch" title="启用或暂停">
+          <input id="enabled" type="checkbox">
+          <span class="switch-track"></span>
+          <span class="sr-only">启用优化</span>
+        </label>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <div>
+          <span id="status-dot" class="status-dot"></span>
+          <strong id="status-title">正在连接…</strong>
+        </div>
+        <p id="status-detail">读取当前页面状态</p>
+        <div class="stats">
+          <div>
+            <strong id="turn-count">—</strong>
+            <span>会话消息</span>
+          </div>
+          <div>
+            <strong id="frozen-count">—</strong>
+            <span>已冻结离屏</span>
+          </div>
+        </div>
+      </section>
+
+      <fieldset class="mode-fieldset">
+        <legend>优化强度</legend>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="safe">
+          <span>
+            <strong>稳妥</strong>
+            <small>60 条后，仅使用原生跳过渲染</small>
+          </span>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="balanced">
+          <span>
+            <strong>均衡</strong>
+            <small>30 条后冻结远处消息，推荐</small>
+          </span>
+        </label>
+        <label class="mode-option">
+          <input type="radio" name="mode" value="strong">
+          <span>
+            <strong>强力</strong>
+            <small>16 条后生效，适合特别长的会话</small>
+          </span>
+        </label>
+      </fieldset>
+
+      <button id="reveal-all" class="secondary-button" type="button">
+        暂时显示全部内容（30 秒）
+      </button>
+
+      <p class="privacy-note">
+        仅调整页面渲染，不读取、保存或上传聊天文本。
+      </p>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>

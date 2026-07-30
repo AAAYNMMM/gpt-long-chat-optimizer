@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GPT 长聊加速器压测页</title>
+    <style>
+      * { box-sizing: border-box; }
+      html { scroll-behavior: auto; }
+      body {
+        margin: 0;
+        color: #202332;
+        background: #f6f7fb;
+        font: 15px/1.65 system-ui, sans-serif;
+      }
+      .toolbar {
+        position: fixed;
+        z-index: 10;
+        top: 12px;
+        left: 50%;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        width: min(920px, calc(100% - 24px));
+        padding: 10px 12px;
+        border: 1px solid #dfe2ee;
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 8px 30px rgba(35, 39, 62, 0.12);
+        transform: translateX(-50%);
+        backdrop-filter: blur(12px);
+      }
+      .toolbar strong { margin-right: auto; }
+      .toolbar button {
+        padding: 7px 10px;
+        border: 1px solid #d7d9e5;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+      }
+      #status {
+        min-width: 220px;
+        color: #5148ce;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      main {
+        width: min(860px, calc(100% - 32px));
+        margin: 0 auto;
+        padding: 90px 0 180px;
+      }
+      body.nested {
+        height: 100vh;
+        overflow: hidden;
+      }
+      body.nested main {
+        height: 100vh;
+        overflow-y: auto;
+      }
+      article {
+        margin: 0 0 18px;
+        padding: 24px;
+        border: 1px solid #e1e3ec;
+        border-radius: 16px;
+        background: white;
+        box-shadow: 0 2px 10px rgba(33, 37, 55, 0.04);
+      }
+      article[data-role="user"] {
+        margin-left: 18%;
+        background: #f0efff;
+      }
+      article h2 { margin: 0 0 10px; font-size: 15px; }
+      article p { margin: 7px 0; }
+      pre {
+        overflow: auto;
+        padding: 14px;
+        border-radius: 10px;
+        color: #e9edf7;
+        background: #202431;
+      }
+      .frozen-outline[data-glco-frozen="true"] {
+        outline: 2px dashed #7c72ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="toolbar" data-glco-ignore="true">
+      <strong>合成长会话压测</strong>
+      <button id="append" type="button">追加 20 条</button>
+      <button id="reveal" type="button">显示全部 30 秒</button>
+      <button id="benchmark" type="button">运行滚动压测</button>
+      <button id="layout-benchmark" type="button">运行布局压测</button>
+      <output id="status">准备中…</output>
+    </div>
+    <main id="conversation"></main>
+
+    <script>
+      (() => {
+        const query = new URLSearchParams(location.search);
+        const settings = {
+          enabled: query.get("enabled") !== "0",
+          mode: query.get("mode") || "balanced"
+        };
+        const useRoleFallback = query.get("selector") === "role";
+        if (query.get("nested") === "1") {
+          document.body.classList.add("nested");
+        }
+        const runtimeListeners = [];
+        const storageListeners = [];
+
+        window.chrome = {
+          storage: {
+            sync: {
+              get(defaults, callback) {
+                queueMicrotask(() => callback({ ...defaults, ...settings }));
+              },
+              set(patch, callback) {
+                Object.assign(settings, patch);
+                callback?.();
+                for (const listener of storageListeners) {
+                  const changes = Object.fromEntries(
+                    Object.entries(patch).map(([key, value]) => [key, { newValue: value }])
+                  );
+                  listener(changes, "sync");
+                }
+              }
+            },
+            onChanged: {
+              addListener(listener) {
+                storageListeners.push(listener);
+              }
+            }
+          },
+          runtime: {
+            lastError: null,
+            sendMessage() {
+              return Promise.resolve();
+            },
+            onMessage: {
+              addListener(listener) {
+                runtimeListeners.push(listener);
+              }
+            }
+          }
+        };
+
+        window.sendFixtureMessage = (message) => new Promise((resolve) => {
+          for (const listener of runtimeListeners) {
+            listener(message, {}, resolve);
+          }
+        });
+
+        const conversation = document.getElementById("conversation");
+        let turnIndex = 0;
+
+        window.appendTurns = (count) => {
+          const fragment = document.createDocumentFragment();
+          for (let offset = 0; offset < count; offset += 1) {
+            const index = turnIndex++;
+            const article = document.createElement("article");
+            const role = index % 2 === 0 ? "user" : "assistant";
+            if (!useRoleFallback) {
+              article.dataset.testid = `conversation-turn-${index}`;
+            }
+            article.dataset.role = role;
+            article.className = "frozen-outline";
+            article.innerHTML = `
+              <div data-message-author-role="${role}">
+                <h2>${role === "user" ? "用户" : "GPT"} · 第 ${index + 1} 条</h2>
+                <p>这是用来模拟超长会话布局成本的测试内容。编号 ${index + 1}。</p>
+                <p>消息包含多段文字、列表和代码块，以接近真实长对话的节点数量。</p>
+                ${role === "assistant" ? `<pre><code>function sample${index}(value) {
+  return value.split("").reverse().join("");
+}
+
+// synthetic line ${index}
+const result = sample${index}("long conversation");</code></pre>` : ""}
+                <p>尾段用于验证冻结和恢复之后，元素高度与滚动位置仍然稳定。</p>
+              </div>
+            `;
+            fragment.append(article);
+          }
+          conversation.append(fragment);
+        };
+
+        window.appendTurns(Number(query.get("count")) || 180);
+      })();
+    </script>
+    <script src="../extension/content.js"></script>
+    <script>
+      (() => {
+        const status = document.getElementById("status");
+        const updateStatus = () => {
+          const root = document.documentElement.dataset;
+          status.value = `${root.glcoState || "启动中"} · ${root.glcoTurns || 0} 条 · 冻结 ${root.glcoFrozen || 0}`;
+        };
+        new MutationObserver(updateStatus).observe(document.documentElement, { attributes: true });
+        updateStatus();
+
+        document.getElementById("append").addEventListener("click", () => {
+          window.appendTurns(20);
+        });
+
+        document.getElementById("reveal").addEventListener("click", () => {
+          const revealMs = Number(new URLSearchParams(location.search).get("revealMs")) || 30_000;
+          window.sendFixtureMessage({
+            type: "GLCO_REVEAL_ALL",
+            durationMs: revealMs
+          }).then(updateStatus);
+        });
+
+        document.getElementById("benchmark").addEventListener("click", async () => {
+          const button = document.getElementById("benchmark");
+          button.disabled = true;
+          status.value = "正在运行滚动压测…";
+          const frameDurations = [];
+          const steps = 180;
+          const maxScroll = document.documentElement.scrollHeight - innerHeight;
+          let previous = performance.now();
+
+          for (let step = 0; step <= steps; step += 1) {
+            scrollTo(0, maxScroll * (step / steps));
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            const now = performance.now();
+            frameDurations.push(now - previous);
+            previous = now;
+          }
+
+          frameDurations.sort((left, right) => left - right);
+          const average = frameDurations.reduce((sum, value) => sum + value, 0) / frameDurations.length;
+          const p95 = frameDurations[Math.floor(frameDurations.length * 0.95)];
+          window.lastBenchmark = {
+            average,
+            p95,
+            samples: frameDurations.length
+          };
+          status.dataset.benchmarkAverage = average.toFixed(3);
+          status.dataset.benchmarkP95 = p95.toFixed(3);
+          status.dataset.benchmarkSamples = String(frameDurations.length);
+          status.value = `完成 · 平均 ${average.toFixed(1)}ms · P95 ${p95.toFixed(1)}ms`;
+          button.disabled = false;
+        });
+
+        document.getElementById("layout-benchmark").addEventListener("click", async () => {
+          const button = document.getElementById("layout-benchmark");
+          const conversation = document.getElementById("conversation");
+          button.disabled = true;
+          status.value = "正在运行布局压测…";
+          const durations = [];
+          const originalWidth = conversation.getBoundingClientRect().width;
+
+          for (let step = 0; step < 60; step += 1) {
+            const started = performance.now();
+            conversation.style.width = `${originalWidth - (step % 2) * 12}px`;
+            void conversation.scrollHeight;
+            durations.push(performance.now() - started);
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+          }
+
+          conversation.style.removeProperty("width");
+          durations.sort((left, right) => left - right);
+          const average = durations.reduce((sum, value) => sum + value, 0) / durations.length;
+          const p95 = durations[Math.floor(durations.length * 0.95)];
+          status.dataset.layoutAverage = average.toFixed(3);
+          status.dataset.layoutP95 = p95.toFixed(3);
+          status.dataset.layoutSamples = String(durations.length);
+          status.value = `布局完成 · 平均 ${average.toFixed(1)}ms · P95 ${p95.toFixed(1)}ms`;
+          button.disabled = false;
+        });
+      })();
+    </script>
+  </body>
+</html>
