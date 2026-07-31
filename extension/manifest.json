@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPT 长聊加速器",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "提前优化 ChatGPT 超长会话与长思考，并提供准确的异常检测和新标签页救援。",
   "permissions": [
     "storage",
@@ -46,7 +46,8 @@
         "https://chat.openai.com/*"
       ],
       "js": [
-        "content.js"
+        "content.js",
+        "final-transition-protection.js"
       ],
       "run_at": "document_idle"
     }
