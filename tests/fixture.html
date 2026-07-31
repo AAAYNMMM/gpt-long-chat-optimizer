@@ -19,9 +19,10 @@
         top: 12px;
         left: 50%;
         display: flex;
+        flex-wrap: wrap;
         align-items: center;
         gap: 8px;
-        width: min(920px, calc(100% - 24px));
+        width: min(1120px, calc(100% - 24px));
         padding: 10px 12px;
         border: 1px solid #dfe2ee;
         border-radius: 14px;
@@ -81,12 +82,53 @@
       .frozen-outline[data-glco-frozen="true"] {
         outline: 2px dashed #7c72ff;
       }
+      .thought-stream {
+        padding: 10px;
+        border-left: 3px solid #756cff;
+        border-radius: 8px;
+        background: #fafaff;
+      }
+      .thought-block {
+        min-height: 58px;
+        margin: 8px 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: #f0f1f7;
+      }
+      .thought-block span {
+        display: block;
+      }
+      .thought-block[data-glco-chunk-frozen="true"] {
+        outline: 2px dashed #17a992;
+      }
+      [id^="fixture-"][role="alert"],
+      [id^="fixture-"][data-state="error"] {
+        position: fixed;
+        z-index: 20;
+        top: 82px;
+        right: 18px;
+        max-width: 280px;
+        padding: 10px 12px;
+        border: 1px solid #d36d72;
+        border-radius: 10px;
+        color: #7f1d25;
+        background: #fff0f1;
+      }
     </style>
+    <link rel="stylesheet" href="../extension/early.css">
   </head>
   <body>
     <div class="toolbar" data-glco-ignore="true">
       <strong>合成长会话压测</strong>
       <button id="append" type="button">追加 20 条</button>
+      <button id="append-thinking" type="button">追加 20 个思考段</button>
+      <button id="finish-thinking" type="button">完成思考</button>
+      <button id="simulate-error" type="button">模拟连接错误</button>
+      <button id="simulate-explicit-error" type="button">模拟显式页面错误</button>
+      <button id="simulate-notice" type="button">模拟普通通知</button>
+      <button id="simulate-hidden-error" type="button">模拟隐藏错误</button>
+      <button id="simulate-offscreen-error" type="button">模拟屏外错误</button>
+      <button id="hide-active-error" type="button">仅隐藏活动错误</button>
       <button id="reveal" type="button">显示全部 30 秒</button>
       <button id="benchmark" type="button">运行滚动压测</button>
       <button id="layout-benchmark" type="button">运行布局压测</button>
@@ -183,7 +225,67 @@ const result = sample${index}("long conversation");</code></pre>` : ""}
           conversation.append(fragment);
         };
 
+        window.appendThinkingBlocks = (count) => {
+          let stream = document.querySelector('[data-testid="model-thoughts"]');
+          if (!stream) {
+            const index = turnIndex++;
+            const article = document.createElement("article");
+            if (!useRoleFallback) {
+              article.dataset.testid = `conversation-turn-${index}`;
+            }
+            article.dataset.role = "assistant";
+            article.className = "frozen-outline";
+            article.innerHTML = `
+              <div data-message-author-role="assistant">
+                <h2>GPT · 长思考回复</h2>
+                <section
+                  class="thought-stream result-streaming"
+                  data-testid="model-thoughts"
+                  data-is-streaming="true"
+                >
+                  <div class="thought-content"></div>
+                </section>
+              </div>
+            `;
+            conversation.append(article);
+            stream = article.querySelector('[data-testid="model-thoughts"]');
+          }
+
+          const content = stream.querySelector(".thought-content");
+          const start = content.children.length;
+          const fragment = document.createDocumentFragment();
+          for (let offset = 0; offset < count; offset += 1) {
+            const paragraph = document.createElement("p");
+            const index = start + offset + 1;
+            paragraph.className = "thought-block";
+            paragraph.innerHTML = `
+              <span>正在分析第 ${index} 个推理步骤，并检查相关约束。</span>
+              <span>这一段模拟流式追加的较长思考内容与布局更新。</span>
+            `;
+            fragment.append(paragraph);
+          }
+          content.append(fragment);
+        };
+
+        window.finishThinking = () => {
+          const stream = document.querySelector('[data-testid="model-thoughts"]');
+          if (!stream) {
+            return;
+          }
+          stream.removeAttribute("data-is-streaming");
+          stream.classList.remove("result-streaming");
+        };
+      })();
+    </script>
+    <script src="../extension/early.js"></script>
+    <script>
+      (() => {
+        const query = new URLSearchParams(location.search);
         window.appendTurns(Number(query.get("count")) || 180);
+        const initialThinkingBlocks = Number(query.get("thinking")) || 0;
+        if (initialThinkingBlocks > 0) {
+          window.appendThinkingBlocks(initialThinkingBlocks);
+        }
       })();
     </script>
     <script src="../extension/content.js"></script>
@@ -192,13 +294,71 @@ const result = sample${index}("long conversation");</code></pre>` : ""}
         const status = document.getElementById("status");
         const updateStatus = () => {
           const root = document.documentElement.dataset;
-          status.value = `${root.glcoState || "启动中"} · ${root.glcoTurns || 0} 条 · 冻结 ${root.glcoFrozen || 0}`;
+          status.value = `${root.glcoState || "启动中"} · ${root.glcoTurns || 0} 条 · 消息 ${root.glcoFrozen || 0} · 思考段 ${root.glcoFrozenChunks || 0}/${root.glcoChunks || 0}`;
         };
         new MutationObserver(updateStatus).observe(document.documentElement, { attributes: true });
         updateStatus();
 
         document.getElementById("append").addEventListener("click", () => {
           window.appendTurns(20);
+        });
+
+        document.getElementById("append-thinking").addEventListener("click", () => {
+          window.appendThinkingBlocks(20);
+        });
+
+        document.getElementById("finish-thinking").addEventListener("click", () => {
+          window.finishThinking();
+        });
+
+        const toggleAlert = (id, message, configure = () => {}) => {
+          const existing = document.getElementById(id);
+          if (existing) {
+            existing.remove();
+            return;
+          }
+          const alert = document.createElement("div");
+          alert.id = id;
+          alert.setAttribute("role", "alert");
+          alert.textContent = message;
+          configure(alert);
+          document.body.append(alert);
+        };
+
+        document.getElementById("simulate-error").addEventListener("click", () => {
+          toggleAlert("fixture-error", "Synthetic connection error");
+        });
+
+        document.getElementById("simulate-explicit-error").addEventListener("click", () => {
+          toggleAlert("fixture-explicit-error", "Synthetic page failure", (alert) => {
+            alert.removeAttribute("role");
+            alert.dataset.state = "error";
+          });
+        });
+
+        document.getElementById("simulate-notice").addEventListener("click", () => {
+          toggleAlert("fixture-notice", "已复制到剪贴板");
+        });
+
+        document.getElementById("simulate-hidden-error").addEventListener("click", () => {
+          toggleAlert("fixture-hidden-error", "Network error", (alert) => {
+            alert.style.display = "none";
+          });
+        });
+
+        document.getElementById("simulate-offscreen-error").addEventListener("click", () => {
+          toggleAlert("fixture-offscreen-error", "Network error", (alert) => {
+            alert.style.position = "absolute";
+            alert.style.top = "20000px";
+          });
+        });
+
+        document.getElementById("hide-active-error").addEventListener("click", () => {
+          const activeError = document.getElementById("fixture-error")
+            || document.getElementById("fixture-explicit-error");
+          if (activeError) {
+            activeError.style.display = "none";
+          }
         });
 
         document.getElementById("reveal").addEventListener("click", () => {

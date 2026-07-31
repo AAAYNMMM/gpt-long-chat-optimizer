@@ -1,0 +1,14 @@
+{
+  "name": "gpt-long-chat-optimizer",
+  "version": "0.3.2",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node tests/static-check.mjs && node tests/recovery-check.mjs",
+    "test:popup": "node tests/popup-visual-check.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.61.1",
+    "sharp": "0.34.5"
+  }
+}

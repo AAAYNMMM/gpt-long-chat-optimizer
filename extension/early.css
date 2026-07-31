@@ -1,0 +1,93 @@
+/*
+ * This stylesheet is declared at document_start so Chromium can skip work for
+ * off-screen conversation content while ChatGPT is rebuilding the page.
+ * early.js controls the data attribute and respects the extension toggle.
+ */
+:where(html[data-glco-startup]:not([data-glco-startup="false"]))
+  :where(
+    [data-testid^="conversation-turn-"],
+    article[data-testid*="conversation-turn"]
+  ) {
+  content-visibility: auto !important;
+  contain-intrinsic-block-size: auto 360px !important;
+}
+
+:where(html[data-glco-startup]:not([data-glco-startup="false"]))
+  :where([data-message-author-role="assistant"])
+  :where(
+    p,
+    pre,
+    blockquote,
+    ul,
+    ol,
+    table,
+    figure,
+    hr,
+    h1,
+    h2,
+    h3,
+    h4,
+    h5,
+    h6
+  ) {
+  content-visibility: auto !important;
+  contain-intrinsic-block-size: auto var(--glco-startup-size, 64px) !important;
+}
+
+:where(html[data-glco-startup]:not([data-glco-startup="false"]))
+  :where([data-message-author-role="assistant"]) :where(pre, table, figure) {
+  --glco-startup-size: 220px;
+}
+
+:where(html[data-glco-startup]:not([data-glco-startup="false"]))
+  :where([data-message-author-role="assistant"]) :where(ul, ol, blockquote) {
+  --glco-startup-size: 112px;
+}
+
+html[data-glco-state="paused"]
+  :where(
+    [data-testid^="conversation-turn-"],
+    article[data-testid*="conversation-turn"],
+    [data-message-author-role="assistant"] p,
+    [data-message-author-role="assistant"] pre,
+    [data-message-author-role="assistant"] blockquote,
+    [data-message-author-role="assistant"] ul,
+    [data-message-author-role="assistant"] ol,
+    [data-message-author-role="assistant"] table,
+    [data-message-author-role="assistant"] figure,
+    [data-message-author-role="assistant"] hr,
+    [data-message-author-role="assistant"] h1,
+    [data-message-author-role="assistant"] h2,
+    [data-message-author-role="assistant"] h3,
+    [data-message-author-role="assistant"] h4,
+    [data-message-author-role="assistant"] h5,
+    [data-message-author-role="assistant"] h6
+  ) {
+  content-visibility: visible !important;
+  contain-intrinsic-size: none !important;
+}
+
+@media print {
+  html[data-glco-startup]
+    :where(
+      [data-testid^="conversation-turn-"],
+      article[data-testid*="conversation-turn"],
+      [data-message-author-role="assistant"] p,
+      [data-message-author-role="assistant"] pre,
+      [data-message-author-role="assistant"] blockquote,
+      [data-message-author-role="assistant"] ul,
+      [data-message-author-role="assistant"] ol,
+      [data-message-author-role="assistant"] table,
+      [data-message-author-role="assistant"] figure,
+      [data-message-author-role="assistant"] hr,
+      [data-message-author-role="assistant"] h1,
+      [data-message-author-role="assistant"] h2,
+      [data-message-author-role="assistant"] h3,
+      [data-message-author-role="assistant"] h4,
+      [data-message-author-role="assistant"] h5,
+      [data-message-author-role="assistant"] h6
+    ) {
+    content-visibility: visible !important;
+    contain-intrinsic-size: none !important;
+  }
+}

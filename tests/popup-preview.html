@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>扩展弹窗布局预览</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        min-height: 100%;
+        background: #e7e9f0;
+      }
+
+      body {
+        display: grid;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      iframe {
+        width: 340px;
+        height: 600px;
+        border: 0;
+        background: white;
+      }
+    </style>
+  </head>
+  <body>
+    <iframe id="popup" src="../extension/popup.html" title="GPT 长聊加速器弹窗预览"></iframe>
+    <script>
+      const frame = document.getElementById("popup");
+
+      frame.addEventListener("load", () => {
+        const popupWindow = frame.contentWindow;
+        const popup = frame.contentDocument;
+        const settings = { enabled: true, mode: "balanced" };
+        const status = () => ({
+          enabled: settings.enabled,
+          mode: settings.mode,
+          active: true,
+          paused: false,
+          startupRescue: true,
+          thinkingOptimized: true,
+          turns: 6,
+          frozen: 0,
+          chunks: 56,
+          frozenChunks: 12,
+          healthIssue: "none"
+        });
+
+        popupWindow.chrome = {
+          storage: {
+            sync: {
+              get(defaults, callback) {
+                callback({ ...defaults, ...settings });
+              },
+              set(patch, callback) {
+                Object.assign(settings, patch);
+                callback();
+              }
+            }
+          },
+          tabs: {
+            query(_query, callback) {
+              callback([{ id: 1, index: 0, url: "https://chatgpt.com/c/layout-preview" }]);
+            },
+            sendMessage(_tabId, _message, callback) {
+              callback(status());
+            }
+          },
+          runtime: {
+            lastError: null,
+            sendMessage(_message, callback) {
+              callback({ ok: true, discardedOldTab: true });
+            }
+          }
+        };
+
+        popup.getElementById("enabled").disabled = false;
+        popup.getElementById("enabled").checked = true;
+        popup.getElementById("status-dot").className = "status-dot active";
+        popup.getElementById("status-title").textContent = "正在优化长思考";
+        popup.getElementById("status-detail").textContent = "长回复分为 56 段，已冻结 12 个旧段";
+        popup.getElementById("turn-count").textContent = "6";
+        popup.getElementById("frozen-count").textContent = "0";
+        popup.getElementById("chunk-count").textContent = "12";
+        popup.getElementById("recovery-state").textContent = "连接状态正常";
+        popup.getElementById("rescue-reopen").disabled = false;
+        popup.getElementById("reveal-all").disabled = false;
+
+        for (const input of popup.querySelectorAll('input[name="mode"]')) {
+          input.disabled = false;
+          input.addEventListener("change", (event) => {
+            event.stopImmediatePropagation();
+          }, { capture: true });
+        }
+
+        const recordMetrics = () => {
+          const root = popup.documentElement;
+          const body = popup.body;
+          frame.dataset.metrics = JSON.stringify({
+            rootClientWidth: root.clientWidth,
+            rootClientHeight: root.clientHeight,
+            rootScrollWidth: root.scrollWidth,
+            rootScrollHeight: root.scrollHeight,
+            bodyScrollWidth: body.scrollWidth,
+            bodyScrollHeight: body.scrollHeight,
+            chromeReady: typeof popupWindow.chrome !== "undefined",
+            checkedMode: popup.querySelector('input[name="mode"]:checked')?.value,
+            modeRows: Array.from(popup.querySelectorAll(".mode-option"), (element) => {
+              const rect = element.getBoundingClientRect();
+              const title = element.querySelector("strong").getBoundingClientRect();
+              const note = element.querySelector("small").getBoundingClientRect();
+              return {
+                height: rect.height,
+                titleLeft: title.left,
+                noteLeft: note.left,
+                noteRight: note.right,
+                rowRight: rect.right
+              };
+            })
+          });
+        };
+
+        recordMetrics();
+        setInterval(recordMetrics, 100);
+      });
+    </script>
+  </body>
+</html>

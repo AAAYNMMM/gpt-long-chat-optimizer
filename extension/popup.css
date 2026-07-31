@@ -18,7 +18,7 @@ body {
 }
 
 .shell {
-  padding: 18px;
+  padding: 16px 18px 14px;
 }
 
 .header {
@@ -26,7 +26,7 @@ body {
   grid-template-columns: 42px 1fr auto;
   align-items: center;
   gap: 11px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .header h1,
@@ -126,11 +126,76 @@ button:focus-visible,
 }
 
 .status-card {
-  padding: 14px;
+  padding: 12px 13px;
   border: 1px solid rgba(94, 103, 130, 0.13);
   border-radius: 15px;
   background: rgba(255, 255, 255, 0.86);
   box-shadow: 0 8px 28px rgba(42, 48, 72, 0.08);
+}
+
+.recovery-card {
+  margin-top: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(217, 119, 6, 0.2);
+  border-radius: 13px;
+  background: rgba(255, 250, 235, 0.88);
+}
+
+.recovery-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.recovery-card strong {
+  font-size: 12px;
+}
+
+.recovery-card span {
+  color: #a35d08;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.recovery-card p {
+  margin: 5px 0 8px;
+  color: #70604d;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.recovery-card small {
+  display: block;
+  min-height: 13px;
+  margin-top: 6px;
+  color: #877663;
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+.rescue-button {
+  width: 100%;
+  padding: 8px 11px;
+  border: 0;
+  border-radius: 10px;
+  color: white;
+  background: linear-gradient(135deg, #db7a0b, #c45b29);
+  box-shadow: 0 5px 14px rgba(196, 91, 41, 0.18);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.rescue-button:hover {
+  filter: brightness(1.04);
+}
+
+.rescue-button:disabled {
+  cursor: not-allowed;
+  filter: none;
+  opacity: 0.48;
 }
 
 .status-card > div:first-child {
@@ -145,7 +210,7 @@ button:focus-visible,
 
 .status-card > p {
   min-height: 16px;
-  margin: 5px 0 12px 15px;
+  margin: 4px 0 9px 15px;
   color: #6b748a;
   font-size: 11px;
 }
@@ -175,21 +240,21 @@ button:focus-visible,
 
 .stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
 }
 
 .stats > div {
   display: flex;
   flex-direction: column;
-  padding: 9px 10px;
+  padding: 7px;
   border-radius: 11px;
   background: #f3f4fa;
 }
 
 .stats strong {
   color: #4138c2;
-  font-size: 18px;
+  font-size: 16px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -201,24 +266,26 @@ button:focus-visible,
 
 .mode-fieldset {
   display: grid;
-  gap: 7px;
-  margin: 16px 0 12px;
+  gap: 6px;
+  margin: 12px 0 10px;
   padding: 0;
   border: 0;
 }
 
 .mode-fieldset legend {
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: #4e576b;
   font-size: 12px;
   font-weight: 700;
 }
 
 .mode-option {
-  display: flex;
+  display: grid;
+  grid-template-columns: 15px auto minmax(0, 1fr);
   align-items: center;
-  gap: 10px;
-  padding: 9px 11px;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 10px;
   border: 1px solid rgba(91, 100, 126, 0.14);
   border-radius: 11px;
   background: rgba(255, 255, 255, 0.65);
@@ -237,24 +304,24 @@ button:focus-visible,
   accent-color: #635bff;
 }
 
-.mode-option > span {
-  display: flex;
-  flex-direction: column;
-}
-
 .mode-option strong {
   font-size: 12px;
+  white-space: nowrap;
 }
 
 .mode-option small {
-  margin-top: 2px;
+  justify-self: end;
   color: #777f92;
   font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
 }
 
 .secondary-button {
   width: 100%;
-  padding: 10px 12px;
+  padding: 9px 12px;
   border: 1px solid rgba(99, 91, 255, 0.24);
   border-radius: 11px;
   color: #5148d7;
@@ -275,10 +342,10 @@ button:focus-visible,
 }
 
 .privacy-note {
-  margin: 11px 2px 0;
+  margin: 8px 2px 0;
   color: #81889a;
   font-size: 10px;
-  line-height: 1.5;
+  line-height: 1.4;
   text-align: center;
 }
 
@@ -310,10 +377,25 @@ button:focus-visible,
   }
 
   .status-card,
+  .recovery-card,
   .mode-option,
   .secondary-button {
     border-color: rgba(191, 196, 218, 0.13);
     background: rgba(35, 38, 51, 0.9);
+  }
+
+  .recovery-card {
+    border-color: rgba(229, 158, 62, 0.22);
+    background: rgba(61, 45, 30, 0.9);
+  }
+
+  .recovery-card p,
+  .recovery-card small {
+    color: #c5b5a2;
+  }
+
+  .recovery-card span {
+    color: #f0b45c;
   }
 
   .stats > div {
