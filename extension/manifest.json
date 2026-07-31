@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GPT 长聊加速器",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "通过浏览器原生的离屏渲染跳过机制，缓解 ChatGPT 超长会话的滚动、输入和渲染卡顿。",
   "permissions": [
     "storage",
@@ -33,8 +33,7 @@
         "https://chat.openai.com/*"
       ],
       "js": [
-        "content.js",
-        "live-turn-protection.js"
+        "content.js"
       ],
       "run_at": "document_idle"
     }
