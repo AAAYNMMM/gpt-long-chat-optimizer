@@ -10,6 +10,10 @@ const packageJson = JSON.parse(
 );
 const manifest = JSON.parse(await readFile(join(extensionDir, "manifest.json"), "utf8"));
 const content = await readFile(join(extensionDir, "content.js"), "utf8");
+const finalTransition = await readFile(
+  join(extensionDir, "final-transition-protection.js"),
+  "utf8"
+);
 const early = await readFile(join(extensionDir, "early.js"), "utf8");
 const earlyCss = await readFile(join(extensionDir, "early.css"), "utf8");
 const background = await readFile(join(extensionDir, "background.js"), "utf8");
@@ -18,7 +22,7 @@ const popupHtml = await readFile(join(extensionDir, "popup.html"), "utf8");
 const popupCss = await readFile(join(extensionDir, "popup.css"), "utf8");
 
 assert.equal(manifest.manifest_version, 3);
-assert.equal(manifest.version, "0.3.2");
+assert.equal(manifest.version, "0.3.3");
 assert.equal(packageJson.version, manifest.version);
 assert.deepEqual(
   new Set(manifest.permissions),
@@ -34,9 +38,13 @@ assert.equal(manifest.content_scripts[0].run_at, "document_start");
 assert.deepEqual(manifest.content_scripts[0].css, ["early.css"]);
 assert.deepEqual(manifest.content_scripts[0].js, ["early.js"]);
 assert.equal(manifest.content_scripts[1].run_at, "document_idle");
-assert.deepEqual(manifest.content_scripts[1].js, ["content.js"]);
+assert.deepEqual(
+  manifest.content_scripts[1].js,
+  ["content.js", "final-transition-protection.js"],
+  "最终回答切换保护脚本应在核心优化脚本之后加载"
+);
 
-for (const file of [content, early, background, popup]) {
+for (const file of [content, finalTransition, early, background, popup]) {
   assert.doesNotMatch(
     file,
     /\b(fetch|XMLHttpRequest|WebSocket|EventSource|sendBeacon)\b/,
@@ -77,6 +85,26 @@ assert.doesNotMatch(
   /\b(getBoundingClientRect|getComputedStyle)\b/,
   "内容脚本不应在初始扫描中强制同步布局"
 );
+
+assert.match(finalTransition, /LIVE_TURN_COUNT\s*=\s*4/);
+assert.match(finalTransition, /LIVE_BLOCK_COUNTS/);
+assert.match(finalTransition, /data-glco-transition-live="true"/);
+assert.match(finalTransition, /data-glco-transition-block="true"/);
+assert.match(finalTransition, /content-visibility:\s*visible\s*!important/);
+assert.match(finalTransition, /delete turn\.dataset\.glcoFrozen/);
+assert.match(finalTransition, /delete block\.dataset\.glcoChunkFrozen/);
+assert.match(finalTransition, /childList:\s*true/);
+assert.doesNotMatch(
+  finalTransition,
+  /characterData:\s*true/,
+  "切换保护不应监听每个流式文字变化"
+);
+assert.doesNotMatch(
+  finalTransition,
+  /\.innerText\b|\.textContent\b(?!\s*=)/,
+  "切换保护不得读取聊天正文"
+);
+
 assert.match(earlyCss, /content-visibility:\s*auto/);
 assert.match(early, /glcoStartup/);
 assert.match(background, /GLCO_RESCUE_REOPEN/);
@@ -86,4 +114,4 @@ assert.doesNotMatch(popupHtml, /class="mode-option"[\s\S]*?<span>/);
 assert.match(popupCss, /grid-template-columns:\s*15px auto minmax\(0,\s*1fr\)/);
 assert.match(popupCss, /\.mode-option small\s*\{[\s\S]*?text-align:\s*right/);
 
-console.log("✓ Manifest、首屏注入、权限、语法、隐私边界与救援流程检查通过");
+console.log("✓ Manifest、首屏注入、最终回答切换保护、权限、语法、隐私边界与救援流程检查通过");
